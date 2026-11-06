@@ -10,8 +10,24 @@ Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.For
 
 Add-Type @'
 using System;
+using System.Text;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 public static class W {
+  public delegate bool EnumProc(IntPtr h, IntPtr p);
+  [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr parent, EnumProc cb, IntPtr p);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+  public static List<IntPtr> Children(IntPtr parent) {
+    var l = new List<IntPtr>();
+    EnumChildWindows(parent, (h, p) => { l.Add(h); return true; }, IntPtr.Zero);
+    return l;
+  }
+  public static string Text(IntPtr h) { var sb = new StringBuilder(512); GetWindowText(h, sb, 512); return sb.ToString(); }
+  public static string Cls(IntPtr h) { var sb = new StringBuilder(256); GetClassName(h, sb, 256); return sb.ToString(); }
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint d, UIntPtr e);
@@ -86,19 +102,22 @@ function Find-Top([scriptblock]$match, [int]$timeout = 40) {
   }
   throw "Window not found"
 }
-function Find-In($parent, [scriptblock]$match, $type = $null, [int]$timeout = 15) {
+function Find-Ctl([IntPtr]$parent, [scriptblock]$match, [string]$cls = '', [int]$timeout = 15) {
   $sw = [Diagnostics.Stopwatch]::StartNew()
   while ($sw.Elapsed.TotalSeconds -lt $timeout) {
-    $all = $parent.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)
-    foreach ($e in $all) {
-      try {
-        if ($type -and $e.Current.ControlType -ne $type) { continue }
-        if (& $match $e.Current.Name) { return $e }
-      } catch { }
+    foreach ($h in [W]::Children($parent)) {
+      if (-not [W]::IsWindowVisible($h)) { continue }
+      if ($cls -and ([W]::Cls($h) -notmatch $cls)) { continue }
+      if (& $match ([W]::Text($h))) { return $h }
     }
     Start-Sleep -Milliseconds 300
   }
-  throw "Element not found"
+  "Controls seen:"; foreach ($h in [W]::Children($parent)) { "  [$([W]::Cls($h))] '$([W]::Text($h))'" }
+  throw "Control not found"
+}
+function Click-H([IntPtr]$h) {
+  $r = New-Object W+RECT; [void][W]::GetWindowRect($h, [ref]$r)
+  Click-At ([int](($r.Left + $r.Right) / 2)) ([int](($r.Top + $r.Bottom) / 2))
 }
 
 # ---- stand-in apps (copies of Notepad named like the real ones) + real browsers ----
@@ -171,25 +190,27 @@ try {
   Move-Mouse ([int]($wr.X + 170)) ([int]($wr.Y + $wr.Height - 190)) 1600; Start-Sleep 1.5
 
   # Teach it something from SEB's list: Notepad
-  $add = Find-In $pf { param($n) $n -like 'Add SEB*' } ([Windows.Automation.ControlType]::Button)
-  Click-El $add
+  $pfh = [IntPtr]$pf.Current.NativeWindowHandle
+  $add = Find-Ctl $pfh { param($n) $n -like 'Add SEB*' } 'BUTTON'
+  Click-H $add
   $dlg = Find-Top { param($n) $n -like 'Add apps from Safe Exam Browser*' } 15
   Start-Sleep 1
-  $edit = Find-In $dlg { param($n) $true } ([Windows.Automation.ControlType]::Edit)
-  Click-El $edit
+  $dlgh = [IntPtr]$dlg.Current.NativeWindowHandle
+  $edit = Find-Ctl $dlgh { param($n) $true } 'EDIT'
+  Click-H $edit
   Start-Sleep -Milliseconds 400
   foreach ($c in 'notepad.exe'.ToCharArray()) { [Windows.Forms.SendKeys]::SendWait([string]$c); Start-Sleep -Milliseconds 110 }
   Start-Sleep 1
   Shot '03-add-list'
-  $save = Find-In $dlg { param($n) $n -eq 'Save' } ([Windows.Automation.ControlType]::Button)
-  Click-El $save
+  $save = Find-Ctl $dlgh { param($n) $n -eq 'Save' } 'BUTTON'
+  Click-H $save
   Start-Sleep 2.5
   Shot '04-ticked'
 
   # Close everything
-  $close = Find-In $pf { param($n) $n -like 'Close * app*' } ([Windows.Automation.ControlType]::Button)
+  $close = Find-Ctl $pfh { param($n) $n -like 'Close * app*' } 'BUTTON'
   Start-Sleep 1
-  Click-El $close
+  Click-H $close
   Start-Sleep 9
   Shot '05-done'
 
