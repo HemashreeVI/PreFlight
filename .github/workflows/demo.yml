@@ -1,0 +1,58 @@
+name: Record demo
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - PreFlight.ps1
+      - PreFlight.bat
+      - demo/**
+      - .github/workflows/demo.yml
+
+permissions:
+  contents: write
+
+jobs:
+  record:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ffmpeg
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { choco install ffmpeg -y --no-progress | Out-Null }
+          ffmpeg -version | Select-Object -First 1
+
+      - name: Record PreFlight on a real Windows desktop
+        shell: powershell
+        run: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + $env:Path
+          .\demo\record-demo.ps1 -Out "$env:RUNNER_TEMP\demo-raw.mp4" -Shots "$env:RUNNER_TEMP\shots"
+
+      - name: Save recording to the demo-video branch
+        if: always()
+        shell: pwsh
+        run: |
+          $out = "$env:RUNNER_TEMP\publish"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          if (Test-Path "$env:RUNNER_TEMP\demo-raw.mp4") { Copy-Item "$env:RUNNER_TEMP\demo-raw.mp4" $out }
+          if (Test-Path "$env:RUNNER_TEMP\shots") { Copy-Item "$env:RUNNER_TEMP\shots" $out -Recurse }
+          Set-Content "$out\RUN.txt" "Run $env:GITHUB_RUN_ID for $env:GITHUB_SHA"
+          cd $out
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Demo recording from run $env:GITHUB_RUN_ID"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:demo-video
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: demo
+          path: |
+            ${{ runner.temp }}/demo-raw.mp4
+            ${{ runner.temp }}/shots
