@@ -134,6 +134,9 @@ $edge = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$en
 if ($edge) { Start-Process $edge -ArgumentList '--no-first-run --no-default-browser-check --window-position=500,300 --window-size=800,520 https://example.org' }
 Start-Sleep 6
 
+# Minimise leftover console windows from the build machine so the desktop is clean.
+Get-Process | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero -and $_.ProcessName -match '^(conhost|cmd|powershell|pwsh|WindowsTerminal|OpenConsole)$' } | ForEach-Object { [void][W]::ShowWindow($_.MainWindowHandle, 6) }
+
 # ---- start recording ----
 $ffmpeg = (Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
 if (-not $ffmpeg) { throw "ffmpeg not found" }
@@ -154,15 +157,18 @@ try {
   # Launch PreFlight the way a user does: the launcher .bat
   Start-Process "$Root\PreFlight.bat" -WorkingDirectory $Root
   $pf = Find-Top { param($n) $n -eq 'PreFlight' } 60
-  try { [void][W]::SetForegroundWindow([IntPtr]$pf.Current.NativeWindowHandle) } catch { }
+  try {
+    $h = [IntPtr]$pf.Current.NativeWindowHandle; $r = $pf.Current.BoundingRectangle
+    [void][W]::MoveWindow($h, [int](($scr.Width - $r.Width) / 2), [int](($scr.Height - $r.Height) / 2 - 20), [int]$r.Width, [int]$r.Height, $true)
+    [void][W]::SetForegroundWindow($h)
+  } catch { }
   Start-Sleep 3
   Shot '02-preflight'
 
   # Scan the ticked list
-  $list = Find-In $pf { param($n) $true } ([Windows.Automation.ControlType]::List)
-  $lr = $list.Current.BoundingRectangle
-  Move-Mouse ([int]($lr.X + 160)) ([int]($lr.Y + 40)) 900; Start-Sleep 1
-  Move-Mouse ([int]($lr.X + 160)) ([int]($lr.Y + $lr.Height - 40)) 1600; Start-Sleep 1.5
+  $wr = $pf.Current.BoundingRectangle
+  Move-Mouse ([int]($wr.X + 170)) ([int]($wr.Y + 190)) 900; Start-Sleep 1
+  Move-Mouse ([int]($wr.X + 170)) ([int]($wr.Y + $wr.Height - 190)) 1600; Start-Sleep 1.5
 
   # Teach it something from SEB's list: Notepad
   $add = Find-In $pf { param($n) $n -like 'Add SEB*' } ([Windows.Automation.ControlType]::Button)

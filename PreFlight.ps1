@@ -223,12 +223,12 @@ $form.KeyPreview = $true
 
 # Header
 $header = New-Object Windows.Forms.Panel
-$header.Dock = 'Top'; $header.Height = 92; $header.BackColor = $Paper; $header.Padding = New-Object Windows.Forms.Padding(22, 16, 22, 10)
+$header.Width = $form.ClientSize.Width; $header.Dock = 'Top'; $header.Height = 92; $header.BackColor = $Paper; $header.Padding = New-Object Windows.Forms.Padding(22, 16, 22, 10)
 $h1 = New-Object Windows.Forms.Label
 $h1.Text = 'Close apps before your exam'; $h1.Font = $Title; $h1.ForeColor = $Ink; $h1.AutoSize = $true; $h1.Location = New-Object Drawing.Point(20, 14)
 $h2 = New-Object Windows.Forms.Label
 $h2.Text = 'Ticked apps are ones Safe Exam Browser usually blocks. Tick anything else it lists, or add its names so they are always ticked.'
-$h2.ForeColor = $Muted; $h2.Location = New-Object Drawing.Point(22, 52); $h2.Size = New-Object Drawing.Size(700, 36); $h2.Anchor = 'Top,Left,Right'
+$h2.ForeColor = $Muted; $h2.Location = New-Object Drawing.Point(22, 52); $h2.Size = New-Object Drawing.Size(($form.ClientSize.Width - 44), 38); $h2.Anchor = 'Top,Left,Right'
 $header.Controls.AddRange(@($h1, $h2))
 
 # List
@@ -254,9 +254,9 @@ $list.ContextMenuStrip = $menu
 
 # Footer
 $footer = New-Object Windows.Forms.Panel
-$footer.Dock = 'Bottom'; $footer.Height = 128; $footer.BackColor = $Paper
+$footer.Width = $form.ClientSize.Width; $footer.Dock = 'Bottom'; $footer.Height = 128; $footer.BackColor = $Paper
 $status = New-Object Windows.Forms.Label
-$status.Location = New-Object Drawing.Point(22, 12); $status.Size = New-Object Drawing.Size(700, 24); $status.Anchor = 'Top,Left,Right'; $status.ForeColor = $Muted; $status.Font = $Bold
+$status.Location = New-Object Drawing.Point(22, 12); $status.Size = New-Object Drawing.Size(($form.ClientSize.Width - 44), 24); $status.Anchor = 'Top,Left,Right'; $status.ForeColor = $Muted; $status.Font = $Bold
 $gentle = New-Object Windows.Forms.CheckBox
 $gentle.Text = 'Let apps ask to save first'; $gentle.Checked = $true; $gentle.AutoSize = $true; $gentle.Location = New-Object Drawing.Point(22, 42); $gentle.ForeColor = $Ink
 $startup = New-Object Windows.Forms.LinkLabel
@@ -284,7 +284,7 @@ $form.Controls.Add($header)
 
 $SebPath = Find-SEB
 $btnSEB.Enabled = [bool]$SebPath
-if (-not $SebPath) { $btnSEB.Text = 'Safe Exam Browser not found' }
+if (-not $SebPath) { $btnSEB.Text = 'SEB not installed' }
 
 # ---------------------------------------------------------------------------
 function Update-CloseButton {
