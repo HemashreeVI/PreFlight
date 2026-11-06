@@ -4,7 +4,9 @@
 
 Before an online test, Safe Exam Browser (SEB) refuses to start until you quit Discord, Teams, WhatsApp, screen recorders, other browsers and more. Hunting each one down in Task Manager takes minutes and you always miss one. PreFlight finds them all, ticks the ones SEB usually blocks, and closes them for you.
 
-<!-- DEMO -->
+![PreFlight demo](docs/demo.gif)
+
+**[Watch the full demo video (45 s, MP4)](docs/preflight-demo.mp4)**. It's a real recording of PreFlight on a Windows Server 2025 machine, made by [this workflow](.github/workflows/demo.yml). Discord, WhatsApp, Zoom, AnyDesk and OBS are stand-in windows. Chrome, Edge and Notepad are real. The pointer is drawn from the recorder's log because cloud machines have no mouse.
 
 ## Features
 
