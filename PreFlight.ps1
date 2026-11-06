@@ -243,6 +243,10 @@ $list.Columns[2].TextAlign = 'Right'; $list.Columns[3].TextAlign = 'Right'
 $listWrap = New-Object Windows.Forms.Panel
 $listWrap.Dock = 'Fill'; $listWrap.Padding = New-Object Windows.Forms.Padding(14, 8, 14, 0)
 $listWrap.Controls.Add($list)
+$empty = New-Object Windows.Forms.Label
+$empty.Text = "All clear.`nNo apps left to close. You can start Safe Exam Browser."
+$empty.TextAlign = 'MiddleCenter'; $empty.Dock = 'Fill'; $empty.ForeColor = $Green; $empty.Font = $Bold; $empty.BackColor = [Drawing.Color]::White; $empty.Visible = $false
+$listWrap.Controls.Add($empty); $empty.BringToFront()
 
 # Right-click menu
 $menu = New-Object Windows.Forms.ContextMenuStrip
@@ -287,10 +291,13 @@ $btnSEB.Enabled = [bool]$SebPath
 if (-not $SebPath) { $btnSEB.Text = 'SEB not installed' }
 
 # ---------------------------------------------------------------------------
+function Plural([int]$n, [string]$word) { if ($n -eq 1) { "1 $word" } else { "$n $($word)s" } }
+
 function Update-CloseButton {
   $n = @($list.Items | Where-Object { $_.Checked }).Count
   $btnClose.Text = if ($n -eq 0) { 'Nothing ticked' } elseif ($n -eq 1) { 'Close 1 app' } else { "Close $n apps" }
   $btnClose.Enabled = $n -gt 0
+  if ($n -gt 0) { $btnClose.BackColor = $Ink } else { $btnClose.BackColor = [Drawing.Color]::FromArgb(226, 228, 236) }
 }
 
 function Load-List {
@@ -309,11 +316,12 @@ function Load-List {
     [void]$list.Items.Add($item)
   }
   $list.EndUpdate()
+  $empty.Visible = ($groups.Count -eq 0)
   $form.Cursor = 'Default'
   $ticked = @($groups | Where-Object { $_.Tick }).Count
   if ($groups.Count -eq 0) { $status.ForeColor = $Green; $status.Text = 'Nothing to close. You are ready for Safe Exam Browser.' }
-  elseif ($ticked -eq 0) { $status.ForeColor = $Muted; $status.Text = "No blocked apps found. $($groups.Count) other app(s) are open." }
-  else { $status.ForeColor = $Ink; $status.Text = "$ticked app(s) to close. Save your work in them first." }
+  elseif ($ticked -eq 0) { $status.ForeColor = $Muted; $status.Text = "No blocked apps found. $(Plural $groups.Count 'other app') open." }
+  else { $status.ForeColor = $Ink; $status.Text = "$(Plural $ticked 'app') to close. Save your work in them first." }
   Update-CloseButton
 }
 
@@ -328,7 +336,7 @@ $btnClose.Add_Click({
   $names = @($list.Items | Where-Object { $_.Checked } | ForEach-Object { $_.Tag })
   if ($names.Count -eq 0) { return }
   foreach ($c in @($btnClose, $btnRefresh, $btnAdd, $list)) { $c.Enabled = $false }
-  $status.ForeColor = $Ink; $status.Text = "Closing $($names.Count) app(s)..."
+  $status.ForeColor = $Ink; $status.Text = "Closing $(Plural $names.Count 'app')..."
   $form.Cursor = 'WaitCursor'; $form.Refresh()
   $r = Close-Apps -names $names -gentle $gentle.Checked -pump { [Windows.Forms.Application]::DoEvents() }
   $form.Cursor = 'Default'
@@ -346,7 +354,7 @@ $btnClose.Add_Click({
     }
   } else {
     $status.ForeColor = $Green
-    $status.Text = "Closed $($names.Count) app(s)." + $(if ($list.Items.Count -eq 0) { ' You are ready.' } else { '' })
+    $status.Text = "Closed $(Plural $names.Count 'app')." + $(if ($list.Items.Count -eq 0) { ' You are ready.' } else { '' })
   }
 })
 
