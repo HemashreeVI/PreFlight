@@ -118,6 +118,11 @@ function Find-Ctl([IntPtr]$parent, [scriptblock]$match, [string]$cls = '', [int]
   "Controls seen:"; foreach ($h in [W]::Children($parent)) { "  [$([W]::Cls($h))] '$([W]::Text($h))'" }
   throw "Control not found"
 }
+function Wait-Text([IntPtr]$h, [scriptblock]$ok, [int]$timeout = 45) {
+  $sw = [Diagnostics.Stopwatch]::StartNew()
+  while ($sw.Elapsed.TotalSeconds -lt $timeout) { $t = [W]::Text($h); if (& $ok $t) { return $t }; Start-Sleep -Milliseconds 250 }
+  "Gave up waiting; text is '$([W]::Text($h))'"
+}
 function Click-H([IntPtr]$h) {
   $r = New-Object W+RECT; [void][W]::GetWindowRect($h, [ref]$r)
   Click-At ([int](($r.Left + $r.Right) / 2)) ([int](($r.Top + $r.Bottom) / 2))
@@ -223,9 +228,12 @@ try {
 
   # Close everything
   $close = Find-Ctl $pfh { param($n) $n -like 'Close * app*' } 'BUTTON'
+  "Close button before: " + (Wait-Text $close { param($t) $t -eq 'Close 8 apps' })
   Start-Sleep 1
   Click-H $close
-  Start-Sleep 9
+  $statusH = Find-Ctl $pfh { param($n) $n -like '*to close*' -or $n -like 'Clos*' } 'STATIC' 5
+  "Status after: " + (Wait-Text $statusH { param($t) $t -like 'Closed*' -or $t -like "Couldn't*" } 60)
+  Start-Sleep 3
   Shot '05-done'
 
   # Show the cleared desktop with PreFlight's result
