@@ -20,6 +20,9 @@ public static class W {
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string t);
+  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, string l);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
   public static List<IntPtr> Children(IntPtr parent) {
     var l = new List<IntPtr>();
@@ -71,24 +74,24 @@ function Shot($name) {
   } catch { "shot failed: $_" }
 }
 
-# ---- smooth, visible mouse ----
+# ---- pointer ----
+# Cloud Windows machines have no mouse, so the pointer isn't drawn and synthetic clicks don't land.
+# We press controls with window messages and log every pointer move; the pointer is drawn onto
+# the video afterwards from this log (demo/events.csv), at the exact positions and times used here.
+$Clock = [Diagnostics.Stopwatch]::new()
+$Events = New-Object System.Collections.ArrayList
+$script:cx = [int]($scr.Width / 2); $script:cy = [int]($scr.Height / 2)
+function Log-Event($type, $x0, $y0, $x1, $y1, $ms) { [void]$Events.Add(('{0:F3},{1},{2},{3},{4},{5},{6}' -f ($Clock.Elapsed.TotalSeconds), $type, $x0, $y0, $x1, $y1, $ms)) }
 function Move-Mouse([int]$x, [int]$y, [int]$ms = 700) {
-  $p = New-Object W+POINT; [void][W]::GetCursorPos([ref]$p)
-  $steps = [math]::Max(12, [int]($ms / 16))
-  for ($i = 1; $i -le $steps; $i++) {
-    $t = $i / $steps; $e = 1 - [math]::Pow(1 - $t, 3)
-    [void][W]::SetCursorPos([int]($p.X + ($x - $p.X) * $e), [int]($p.Y + ($y - $p.Y) * $e))
-    Start-Sleep -Milliseconds 16
-  }
+  Log-Event 'move' $script:cx $script:cy $x $y $ms
+  try { [void][W]::SetCursorPos($x, $y) } catch { }
+  Start-Sleep -Milliseconds $ms
+  $script:cx = $x; $script:cy = $y
 }
 function Click-At([int]$x, [int]$y) {
   Move-Mouse $x $y
   Start-Sleep -Milliseconds 250
-  [W]::mouse_event(0x2, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 70; [W]::mouse_event(0x4, 0, 0, 0, [UIntPtr]::Zero)
-}
-function Click-El($el) {
-  $r = $el.Current.BoundingRectangle
-  Click-At ([int]($r.X + $r.Width / 2)) ([int]($r.Y + $r.Height / 2))
+  Log-Event 'click' $x $y $x $y 0
 }
 
 # ---- UI Automation helpers ----
@@ -118,6 +121,15 @@ function Find-Ctl([IntPtr]$parent, [scriptblock]$match, [string]$cls = '', [int]
 function Click-H([IntPtr]$h) {
   $r = New-Object W+RECT; [void][W]::GetWindowRect($h, [ref]$r)
   Click-At ([int](($r.Left + $r.Right) / 2)) ([int](($r.Top + $r.Bottom) / 2))
+  [void][W]::PostMessage($h, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero)   # BM_CLICK
+}
+function Find-TopByTitle([string]$title, [int]$timeout = 15) {
+  $sw = [Diagnostics.Stopwatch]::StartNew()
+  while ($sw.Elapsed.TotalSeconds -lt $timeout) {
+    $h = [W]::FindWindow($null, $title); if ($h -ne [IntPtr]::Zero) { return $h }
+    Start-Sleep -Milliseconds 200
+  }
+  throw "Window '$title' not found"
 }
 
 # ---- stand-in apps (copies of Notepad named like the real ones) + real browsers ----
@@ -164,6 +176,7 @@ $psi.FileName = $ffmpeg
 $psi.Arguments = "-y -f gdigrab -framerate 30 -draw_mouse 1 -i desktop -t 150 -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p `"$Out`""
 $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.CreateNoWindow = $true
 $rec = [Diagnostics.Process]::Start($psi)
+$Clock.Start()
 Start-Sleep 2
 Shot '01-cluttered'
 
@@ -193,13 +206,14 @@ try {
   $pfh = [IntPtr]$pf.Current.NativeWindowHandle
   $add = Find-Ctl $pfh { param($n) $n -like 'Add SEB*' } 'BUTTON'
   Click-H $add
-  $dlg = Find-Top { param($n) $n -like 'Add apps from Safe Exam Browser*' } 15
+  $dlgh = Find-TopByTitle "Add apps from Safe Exam Browser's list"
   Start-Sleep 1
-  $dlgh = [IntPtr]$dlg.Current.NativeWindowHandle
   $edit = Find-Ctl $dlgh { param($n) $true } 'EDIT'
-  Click-H $edit
+  $er = New-Object W+RECT; [void][W]::GetWindowRect($edit, [ref]$er)
+  Click-At ([int]($er.Left + 60)) ([int]($er.Top + 20))
   Start-Sleep -Milliseconds 400
-  foreach ($c in 'notepad.exe'.ToCharArray()) { [Windows.Forms.SendKeys]::SendWait([string]$c); Start-Sleep -Milliseconds 110 }
+  $typed = ''
+  foreach ($c in 'notepad.exe'.ToCharArray()) { $typed += $c; [void][W]::SendMessage($edit, 0x000C, [IntPtr]::Zero, $typed); Start-Sleep -Milliseconds 120 }
   Start-Sleep 1
   Shot '03-add-list'
   $save = Find-Ctl $dlgh { param($n) $n -eq 'Save' } 'BUTTON'
@@ -222,6 +236,7 @@ try {
   try { $rec.StandardInput.Write('q'); $rec.StandardInput.Close() } catch { }
   if (-not $rec.WaitForExit(20000)) { try { $rec.Kill() } catch { } }
   Shot '06-end'
+  Set-Content (Join-Path $Shots 'events.csv') (@('t,type,x0,y0,x1,y1,ms') + $Events)
 }
 "Recorded: $Out ($([math]::Round((Get-Item $Out).Length / 1MB, 1)) MB)"
 "Still running afterwards: " + ((Get-Process | Where-Object { $_.ProcessName -in 'Discord','WhatsApp','Zoom','AnyDesk','obs64','notepad','chrome','msedge' }).ProcessName -join ', ')
