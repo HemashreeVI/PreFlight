@@ -126,7 +126,7 @@ function Click-H([IntPtr]$h) {
 function Find-TopByTitle([string]$title, [int]$timeout = 15) {
   $sw = [Diagnostics.Stopwatch]::StartNew()
   while ($sw.Elapsed.TotalSeconds -lt $timeout) {
-    $h = [W]::FindWindow($null, $title); if ($h -ne [IntPtr]::Zero) { return $h }
+    $h = [W]::FindWindow([NullString]::Value, $title); if ($h -ne [IntPtr]::Zero) { return $h }
     Start-Sleep -Milliseconds 200
   }
   throw "Window '$title' not found"
